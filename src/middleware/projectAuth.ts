@@ -13,21 +13,18 @@ export function buildProjectAuthMiddleware(repo: ProjectRepository) {
   return async function projectAuth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const authHeader = request.headers.authorization ?? '';
     if (!authHeader.startsWith('Bearer ')) {
-      reply.code(401).send({ error: { code: 'MISSING_API_KEY', message: 'Authorization header required' } });
-      return;
+      return reply.code(401).send({ error: { code: 'MISSING_API_KEY', message: 'Authorization header required' } });
     }
 
     const rawKey = authHeader.slice(7).trim();
     if (!rawKey) {
-      reply.code(401).send({ error: { code: 'MISSING_API_KEY', message: 'API key is empty' } });
-      return;
+      return reply.code(401).send({ error: { code: 'MISSING_API_KEY', message: 'API key is empty' } });
     }
 
     const hash = hashApiKey(rawKey);
     const project = await repo.findByApiKeyHash(hash);
     if (!project) {
-      reply.code(401).send({ error: { code: 'INVALID_API_KEY', message: 'Invalid or inactive API key' } });
-      return;
+      return reply.code(401).send({ error: { code: 'INVALID_API_KEY', message: 'Invalid or inactive API key' } });
     }
 
     request.project = project;

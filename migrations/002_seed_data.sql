@@ -24,9 +24,7 @@ VALUES
   ('custom',            '*',                  0, 0, 'USD', 1, CURRENT_DATE)
 ON DUPLICATE KEY UPDATE `provider` = VALUES(`provider`);
 
--- Default usage mapping (points to providers that don't exist yet — admin must configure)
-INSERT INTO `ai_usage_mapping` (`usage_key`, `provider_id`, `model_type`)
-VALUES
-  ('text_default',    'openai_main',  'text'),
-  ('carousel_image',  'openai_main',  'image')
-ON DUPLICATE KEY UPDATE `usage_key` = VALUES(`usage_key`);
+-- Default usage mapping is intentionally empty in seed.
+-- Create providers via admin UI/API, then set mapping
+-- (e.g. text / image / text_default / carousel_image → your provider id).
+-- Leaving mapping empty lets resolveUsage fall through to any enabled provider.

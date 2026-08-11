@@ -15,21 +15,22 @@ export class AiTextGenerationService {
     private readonly providers: AiTextProviderInterface[],
   ) {}
 
-  async assist(payload: Partial<AiTextRequest>): Promise<AiGenerationResult & { provider: string; providerId: string; model: string }> {
-    const settings = await this.settingsRepo.resolveUsage('text_default', 'text');
+  async assist(payload: Partial<AiTextRequest> & { usageKey?: string }): Promise<AiGenerationResult & { provider: string; providerId: string; model: string }> {
+    const usageKey = (payload.usageKey ?? 'text').trim() || 'text';
+    const settings = await this.settingsRepo.resolveUsage(usageKey, 'text');
     if (!settings) throw new Error('AI text provider is not configured');
     if (!settings.apiKey && settings.authConfig.type !== 'none') {
       throw new Error('AI text provider API key is not configured');
     }
 
     const action       = this.normalizeAction(payload.action ?? 'custom');
-    const language     = this.normalizeLanguage(payload.language ?? 'th');
+    const language     = this.normalizeLanguage(payload.language ?? 'en');
     const prompt       = this.limit(payload.prompt ?? '', MAX_PROMPT_LENGTH);
     const selectedText = this.limit(payload.selectedText ?? '', MAX_SELECTION_LENGTH);
     const content      = this.limit(payload.content ?? '', MAX_CONTENT_LENGTH);
 
     if (!prompt && !selectedText && !content) {
-      throw new Error('Prompt or editor content is required');
+      throw new Error('Prompt or content is required');
     }
 
     const messages  = this.buildMessages(action, language, prompt, selectedText, content);

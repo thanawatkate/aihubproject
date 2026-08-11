@@ -32,6 +32,158 @@ export class AiUsageRepository {
     return this.mapUsage((rows[0] ?? {}) as RowDataPacket);
   }
 
+  /**
+   * Atomically reserve request + estimated token/cost holds (closes TOCTOU).
+   * Caller must releaseQuotaReservation() in finally when reserved=true.
+   */
+  async tryReserveQuota(opts: {
+    month: string;
+    scopeType: string;
+    scopeId: string;
+    requestLimit: number | null;
+    tokenLimit: number | null;
+    costLimit: number | null;
+    reserveTokens: number;
+    reserveCost: number;
+  }): Promise<boolean> {
+    const needsRequest = opts.requestLimit !== null;
+    const needsTokens = opts.tokenLimit !== null;
+    const needsCost = opts.costLimit !== null;
+    if (!needsRequest && !needsTokens && !needsCost) {
+      return true;
+    }
+
+    const conn = await this.db.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      await conn.execute(
+        `INSERT INTO ai_quota_reservations
+           (usage_month, scope_type, scope_id, reserved_requests, reserved_tokens, reserved_cost)
+         VALUES (?, ?, ?, 0, 0, 0)
+         ON DUPLICATE KEY UPDATE usage_month = usage_month`,
+        [opts.month, opts.scopeType, opts.scopeId],
+      );
+
+      const [resRows] = await conn.execute<RowDataPacket[]>(
+        `SELECT reserved_requests, reserved_tokens, reserved_cost
+         FROM ai_quota_reservations
+         WHERE usage_month = ? AND scope_type = ? AND scope_id = ?
+         FOR UPDATE`,
+        [opts.month, opts.scopeType, opts.scopeId],
+      );
+      const reservedRequests = Number(resRows[0]?.['reserved_requests'] ?? 0);
+      const reservedTokens = Number(resRows[0]?.['reserved_tokens'] ?? 0);
+      const reservedCost = Number(resRows[0]?.['reserved_cost'] ?? 0);
+
+      const [usageRows] = await conn.execute<RowDataPacket[]>(
+        `SELECT
+           COALESCE(SUM(requests_count), 0) AS requests_count,
+           COALESCE(SUM(total_tokens), 0) AS total_tokens,
+           COALESCE(SUM(estimated_cost), 0) AS estimated_cost
+         FROM ai_usage_daily_rollups
+         WHERE usage_month = ? AND scope_type = ? AND scope_id = ?`,
+        [opts.month, opts.scopeType, opts.scopeId],
+      );
+      const usedRequests = Number(usageRows[0]?.['requests_count'] ?? 0);
+      const usedTokens = Number(usageRows[0]?.['total_tokens'] ?? 0);
+      const usedCost = Number(usageRows[0]?.['estimated_cost'] ?? 0);
+
+      if (needsRequest && usedRequests + reservedRequests >= (opts.requestLimit as number)) {
+        await conn.rollback();
+        return false;
+      }
+      if (needsTokens && usedTokens + reservedTokens + opts.reserveTokens > (opts.tokenLimit as number)) {
+        await conn.rollback();
+        return false;
+      }
+      if (needsCost && usedCost + reservedCost + opts.reserveCost > (opts.costLimit as number)) {
+        await conn.rollback();
+        return false;
+      }
+
+      await conn.execute(
+        `UPDATE ai_quota_reservations
+         SET reserved_requests = reserved_requests + ?,
+             reserved_tokens   = reserved_tokens + ?,
+             reserved_cost     = reserved_cost + ?
+         WHERE usage_month = ? AND scope_type = ? AND scope_id = ?`,
+        [
+          needsRequest ? 1 : 0,
+          needsTokens ? opts.reserveTokens : 0,
+          needsCost ? opts.reserveCost : 0,
+          opts.month,
+          opts.scopeType,
+          opts.scopeId,
+        ],
+      );
+
+      await conn.commit();
+      return true;
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+  }
+
+  async releaseQuotaReservation(opts: {
+    month: string;
+    scopeType: string;
+    scopeId: string;
+    reservedRequests: number;
+    reservedTokens: number;
+    reservedCost: number;
+  }): Promise<void> {
+    await this.db.execute(
+      `UPDATE ai_quota_reservations
+       SET reserved_requests = GREATEST(CAST(reserved_requests AS SIGNED) - ?, 0),
+           reserved_tokens   = GREATEST(CAST(reserved_tokens AS SIGNED) - ?, 0),
+           reserved_cost     = GREATEST(reserved_cost - ?, 0)
+       WHERE usage_month = ? AND scope_type = ? AND scope_id = ?`,
+      [
+        opts.reservedRequests,
+        opts.reservedTokens,
+        opts.reservedCost,
+        opts.month,
+        opts.scopeType,
+        opts.scopeId,
+      ],
+    );
+  }
+
+  /** @deprecated use tryReserveQuota */
+  async tryReserveRequest(
+    month: string,
+    scopeType: string,
+    scopeId: string,
+    requestLimit: number | null,
+  ): Promise<boolean> {
+    return this.tryReserveQuota({
+      month,
+      scopeType,
+      scopeId,
+      requestLimit,
+      tokenLimit: null,
+      costLimit: null,
+      reserveTokens: 0,
+      reserveCost: 0,
+    });
+  }
+
+  /** @deprecated use releaseQuotaReservation */
+  async releaseReservation(month: string, scopeType: string, scopeId: string): Promise<void> {
+    await this.releaseQuotaReservation({
+      month,
+      scopeType,
+      scopeId,
+      reservedRequests: 1,
+      reservedTokens: 0,
+      reservedCost: 0,
+    });
+  }
+
   async insertLedger(entry: UsageEntry): Promise<void> {
     await this.db.execute(
       `INSERT IGNORE INTO ai_usage_ledger

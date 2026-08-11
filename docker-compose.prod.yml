@@ -1,0 +1,51 @@
+version: '3.9'
+
+# Production stack — do not use bind mounts or weak defaults.
+# Required env: ADMIN_SECRET, ENCRYPTION_KEY, DB_PASSWORD, MYSQL_ROOT_PASSWORD
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - '${AIHUB_PORT:-3400}:3400'
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3400
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-aihub_db}
+      DB_USER: ${DB_USER:-aihub_user}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      ADMIN_SECRET: ${ADMIN_SECRET:?ADMIN_SECRET is required}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      AI_PROVIDER_TIMEOUT_SECONDS: ${AI_PROVIDER_TIMEOUT_SECONDS:-60}
+      AI_PROVIDER_RETRY_ATTEMPTS: ${AI_PROVIDER_RETRY_ATTEMPTS:-1}
+      AI_PROVIDER_RETRY_DELAY_MS: ${AI_PROVIDER_RETRY_DELAY_MS:-250}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    command: ['sh', '-c', 'node dist/migrate.js && node dist/server.js']
+
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+      MYSQL_DATABASE: ${DB_NAME:-aihub_db}
+      MYSQL_USER: ${DB_USER:-aihub_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    volumes:
+      - aihub_db_data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  aihub_db_data:

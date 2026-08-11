@@ -1,4 +1,5 @@
 import { env } from '../../../config/env.js';
+import { assertSafeOutboundUrl } from '../../../utils/urlSafety.js';
 
 interface RequestOptions {
   method: string;
@@ -38,7 +39,6 @@ export class AiProviderHttpClient {
     }
 
     if (type === 'query' && apiKey) {
-      // Query param auth — return separately to append to URL
       return { headers, queryParam: `${queryKey || 'key'}=${encodeURIComponent(apiKey)}` };
     }
 
@@ -46,6 +46,8 @@ export class AiProviderHttpClient {
   }
 
   async requestJson(opts: RequestOptions & { retries?: number }): Promise<unknown> {
+    await assertSafeOutboundUrl(opts.url);
+
     const retries   = opts.retries ?? this.retryAttempts;
     const delayMs   = this.retryDelayMs;
     let lastErr: Error = new Error('Request failed');
@@ -85,6 +87,7 @@ export class AiProviderHttpClient {
         method:  opts.method,
         headers: opts.headers,
         signal:  controller.signal,
+        redirect: 'error',
       };
 
       if (opts.body && opts.method !== 'GET' && opts.method !== 'HEAD') {

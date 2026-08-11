@@ -22,21 +22,37 @@ export class AiProviderSettingsRepository {
     return row ? this.mapRow(row, true) : null;
   }
 
-  /** Resolve the provider for a given usage key (e.g., 'text_default') with decrypted key */
+  /**
+   * Resolve provider for a usage key.
+   * Falls back to generic "text" / "image" keys, then any enabled provider of that model type.
+   */
   async resolveUsage(usageKey: string, fallbackModelType: 'text' | 'image'): Promise<ResolvedUsage | null> {
-    const [mappingRows] = await this.db.execute<RowDataPacket[]>(
-      'SELECT provider_id, model_type FROM ai_usage_mapping WHERE usage_key = ? LIMIT 1',
-      [usageKey],
+    const keysToTry = [usageKey, fallbackModelType].filter(
+      (key, index, all) => key !== '' && all.indexOf(key) === index,
     );
-    const mapping = mappingRows[0];
-    const providerId  = (mapping?.['provider_id'] as string) ?? '';
-    const modelType   = ((mapping?.['model_type'] as string) ?? fallbackModelType) as 'text' | 'image';
 
-    const provider = await this.findEnabledProvider(providerId, modelType);
+    for (const key of keysToTry) {
+      const [mappingRows] = await this.db.execute<RowDataPacket[]>(
+        'SELECT provider_id, model_type FROM ai_usage_mapping WHERE usage_key = ? LIMIT 1',
+        [key],
+      );
+      const mapping = mappingRows[0];
+      if (!mapping) continue;
+
+      const providerId = (mapping['provider_id'] as string) ?? '';
+      const modelType = ((mapping['model_type'] as string) ?? fallbackModelType) as 'text' | 'image';
+      const provider = await this.findEnabledProvider(providerId, modelType);
+      if (!provider) continue;
+
+      const model = modelType === 'image' ? provider.imageModel : provider.textModel;
+      return { ...provider, providerId: provider.id, modelType, model };
+    }
+
+    // Last resort: any enabled provider that supports the model type
+    const provider = await this.findEnabledProvider('', fallbackModelType);
     if (!provider) return null;
-
-    const model = modelType === 'image' ? provider.imageModel : provider.textModel;
-    return { ...provider, providerId: provider.id, modelType, model };
+    const model = fallbackModelType === 'image' ? provider.imageModel : provider.textModel;
+    return { ...provider, providerId: provider.id, modelType: fallbackModelType, model };
   }
 
   async saveProvider(config: Partial<AiProviderConfig> & { id: string }): Promise<void> {

@@ -24,4 +24,20 @@ export class AiModelPricingService {
       pricingFound:  true,
     };
   }
+
+  /**
+   * Flat per-image cost. Convention: for image models, store USD-per-image
+   * in `output_cost_per_1k_tokens` (AiManagement pricing table).
+   */
+  async estimateImageCost(provider: string, model: string): Promise<CostEstimate> {
+    const pricing = await this.repo.findModelPricing(provider, model);
+    if (!pricing) {
+      return { estimatedCost: 0, currency: 'USD', pricingFound: false };
+    }
+    return {
+      estimatedCost: Math.round(pricing.outputCostPer1k * 1e8) / 1e8,
+      currency:      pricing.currency,
+      pricingFound:  true,
+    };
+  }
 }

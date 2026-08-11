@@ -33,12 +33,9 @@ export function decryptValue(data: string, keyHex: string): string {
   return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
 }
 
-/** Timing-safe string comparison to prevent timing attacks */
+/** Timing-safe string comparison to prevent timing attacks (length-oracle resistant). */
 export function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    // Still run comparison to avoid length leak
-    crypto.timingSafeEqual(Buffer.alloc(1), Buffer.alloc(1));
-    return false;
-  }
-  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  const ha = crypto.createHash('sha256').update(a).digest();
+  const hb = crypto.createHash('sha256').update(b).digest();
+  return crypto.timingSafeEqual(ha, hb);
 }

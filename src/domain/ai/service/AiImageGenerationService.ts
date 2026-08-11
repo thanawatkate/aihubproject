@@ -1,13 +1,14 @@
 import type { AiProviderSettingsRepository } from '../repository/AiProviderSettingsRepository.js';
 import { AiProviderHttpClient } from '../provider/AiProviderHttpClient.js';
 import { env } from '../../../config/env.js';
+import { assertSafeOutboundUrl } from '../../../utils/urlSafety.js';
 
 export interface ImageGenerateParams {
   prompt: string;
   size: string;
   quality: string;
-  targetWidth: number;
-  targetHeight: number;
+  targetWidth?: number;
+  targetHeight?: number;
   referenceImageBase64?: string;
   referenceImageMimeType?: string;
   usageKey?: string;
@@ -28,7 +29,7 @@ export class AiImageGenerationService {
   ) {}
 
   async generate(params: ImageGenerateParams): Promise<ImageResult> {
-    const usageKey = params.usageKey ?? 'carousel_image';
+    const usageKey = params.usageKey ?? 'image';
     const settings = await this.settingsRepo.resolveUsage(usageKey, 'image');
     if (!settings) throw new Error('AI image provider is not configured');
     if (!settings.apiKey && settings.authConfig.type !== 'none') {
@@ -155,14 +156,26 @@ export class AiImageGenerationService {
   }
 
   private async downloadAndEncode(url: string): Promise<{ imageBase64: string; mimeType: string }> {
-    const resp  = await fetch(url, { signal: AbortSignal.timeout(30000) });
+    await assertSafeOutboundUrl(url);
+    const resp  = await fetch(url, { signal: AbortSignal.timeout(30000), redirect: 'error' });
     const mime  = resp.headers.get('content-type') ?? 'image/png';
     const bytes = Buffer.from(await resp.arrayBuffer());
+    if (bytes.byteLength > 8 * 1024 * 1024) {
+      throw new Error('Downloaded image exceeds size limit');
+    }
     return { imageBase64: bytes.toString('base64'), mimeType: mime.split(';')[0]?.trim() ?? 'image/png' };
   }
 
-  private buildPrompt(rawPrompt: string, w: number, h: number): string {
-    const hint = h > 0 ? `${w}x${h} website carousel banner` : `${w}px wide website carousel image`;
-    return `${rawPrompt.trim()}\n\nCreate a polished ${hint}. Avoid text, logos, watermarks, UI mockups, and distorted people. Keep the main subject centered with safe margins for responsive cropping.`;
+  private buildPrompt(rawPrompt: string, w?: number, h?: number): string {
+    const width = typeof w === 'number' && w > 0 ? w : 0;
+    const height = typeof h === 'number' && h > 0 ? h : 0;
+    const sizeHint =
+      width > 0 && height > 0
+        ? `${width}x${height}`
+        : width > 0
+          ? `${width}px wide`
+          : '';
+    const hint = sizeHint !== '' ? ` Prefer a polished ${sizeHint} composition.` : '';
+    return `${rawPrompt.trim()}${hint}\n\nAvoid watermarks, logos, UI mockups, and distorted people unless explicitly requested. Keep the main subject clear with safe margins for cropping.`;
   }
 }

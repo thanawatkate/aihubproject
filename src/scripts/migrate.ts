@@ -1,10 +1,47 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import type { RowDataPacket } from 'mysql2/promise';
 import { pool } from '../db/database.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.join(__dirname, '../../migrations');
+
+async function columnExists(table: string, column: string): Promise<boolean> {
+  const [rows] = await pool.execute<RowDataPacket[]>(
+    `SELECT 1 AS ok
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?
+     LIMIT 1`,
+    [table, column],
+  );
+  return rows.length > 0;
+}
+
+async function addColumnIfMissing(table: string, column: string, definition: string): Promise<void> {
+  if (await columnExists(table, column)) {
+    console.log(`[migrate] skip column ${table}.${column} (exists)`);
+    return;
+  }
+  await pool.execute(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
+  console.log(`[migrate] ✓ added column ${table}.${column}`);
+}
+
+async function ensureHardeningColumns(): Promise<void> {
+  // Round-3: token/cost holds on quota reservations (idempotent for MySQL)
+  await addColumnIfMissing(
+    'ai_quota_reservations',
+    'reserved_tokens',
+    'BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER `reserved_requests`',
+  );
+  await addColumnIfMissing(
+    'ai_quota_reservations',
+    'reserved_cost',
+    'DECIMAL(14,8) NOT NULL DEFAULT 0 AFTER `reserved_tokens`',
+  );
+}
 
 async function migrate(): Promise<void> {
   const files = fs.readdirSync(migrationsDir)
@@ -28,6 +65,8 @@ async function migrate(): Promise<void> {
     }
     console.log(`[migrate] ✓ ${file}`);
   }
+
+  await ensureHardeningColumns();
 
   await pool.end();
   console.log('[migrate] Done.');

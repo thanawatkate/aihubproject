@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { adminAuth } from '../../middleware/adminAuth.js';
 import { buildProjectAuthMiddleware } from '../../middleware/projectAuth.js';
@@ -6,6 +6,7 @@ import type { AiQuotaService } from '../../domain/ai/service/AiQuotaService.js';
 import type { AiModelPricingService } from '../../domain/ai/service/AiModelPricingService.js';
 import type { AiUsageRepository } from '../../domain/ai/repository/AiUsageRepository.js';
 import type { ProjectRepository } from '../../domain/project/ProjectRepository.js';
+import type { AdminAuditService } from '../../domain/ai/service/AdminAuditService.js';
 
 const packageSchema = z.object({
   packageName:          z.string().default('Global Default'),
@@ -17,6 +18,13 @@ const packageSchema = z.object({
   hardLimitEnabled:     z.boolean().default(true),
 });
 
+function auditCtx(request: FastifyRequest) {
+  return {
+    ip: request.ip,
+    userAgent: typeof request.headers['user-agent'] === 'string' ? request.headers['user-agent'] : null,
+  };
+}
+
 export async function billingRoutes(
   fastify: FastifyInstance,
   opts: {
@@ -24,6 +32,7 @@ export async function billingRoutes(
     pricingService: AiModelPricingService;
     usageRepo:      AiUsageRepository;
     projectRepo:    ProjectRepository;
+    auditService:   AdminAuditService;
   },
 ): Promise<void> {
   const projectAuth = buildProjectAuthMiddleware(opts.projectRepo);
@@ -56,6 +65,18 @@ export async function billingRoutes(
       return reply.code(400).send({ error: { code: 'INVALID_INPUT', details: parsed.error.flatten().fieldErrors } });
     }
     const pkg = await opts.usageRepo.saveGlobalPackage(parsed.data);
+    await opts.auditService.record({
+      action: 'billing.package_save',
+      resourceType: 'billing_package',
+      resourceId: pkg.packageKey,
+      ...auditCtx(request),
+      meta: {
+        requestLimitMonthly: parsed.data.requestLimitMonthly,
+        tokenLimitMonthly: parsed.data.tokenLimitMonthly,
+        costLimitMonthly: parsed.data.costLimitMonthly,
+        hardLimitEnabled: parsed.data.hardLimitEnabled,
+      },
+    });
     return reply.send(pkg);
   });
 
@@ -84,6 +105,13 @@ export async function billingRoutes(
       return reply.code(400).send({ error: { code: 'INVALID_INPUT', details: parsed.error.flatten().fieldErrors } });
     }
     await opts.pricingService.savePricing(parsed.data);
+    await opts.auditService.record({
+      action: 'billing.pricing_save',
+      resourceType: 'model_pricing',
+      resourceId: null,
+      ...auditCtx(request),
+      meta: { count: parsed.data.length },
+    });
     return reply.send({ ok: true });
   });
 }
