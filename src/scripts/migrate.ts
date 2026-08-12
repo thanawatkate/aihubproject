@@ -20,7 +20,23 @@ async function columnExists(table: string, column: string): Promise<boolean> {
   return rows.length > 0;
 }
 
+async function tableExists(table: string): Promise<boolean> {
+  const [rows] = await pool.execute<RowDataPacket[]>(
+    `SELECT 1 AS ok
+     FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+     LIMIT 1`,
+    [table],
+  );
+  return rows.length > 0;
+}
+
 async function addColumnIfMissing(table: string, column: string, definition: string): Promise<void> {
+  if (!(await tableExists(table))) {
+    console.log(`[migrate] skip column ${table}.${column} (table missing)`);
+    return;
+  }
   if (await columnExists(table, column)) {
     console.log(`[migrate] skip column ${table}.${column} (exists)`);
     return;
@@ -30,7 +46,6 @@ async function addColumnIfMissing(table: string, column: string, definition: str
 }
 
 async function ensureHardeningColumns(): Promise<void> {
-  // Round-3: token/cost holds on quota reservations (idempotent for MySQL)
   await addColumnIfMissing(
     'ai_quota_reservations',
     'reserved_tokens',
@@ -43,6 +58,23 @@ async function ensureHardeningColumns(): Promise<void> {
   );
 }
 
+function splitSqlStatements(sql: string): string[] {
+  return sql
+    .split(';')
+    .map((chunk) =>
+      chunk
+        .split('\n')
+        .map((line) => line.trimEnd())
+        .filter((line) => {
+          const trimmed = line.trim();
+          return trimmed !== '' && !trimmed.startsWith('--');
+        })
+        .join('\n')
+        .trim(),
+    )
+    .filter(Boolean);
+}
+
 async function migrate(): Promise<void> {
   const files = fs.readdirSync(migrationsDir)
     .filter(f => f.endsWith('.sql'))
@@ -53,17 +85,12 @@ async function migrate(): Promise<void> {
   for (const file of files) {
     console.log(`[migrate] Running ${file}...`);
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
-
-    // Split on semicolons, skip empty statements
-    const statements = sql
-      .split(';')
-      .map(s => s.trim())
-      .filter(s => s && !s.startsWith('--'));
+    const statements = splitSqlStatements(sql);
 
     for (const stmt of statements) {
       await pool.execute(stmt);
     }
-    console.log(`[migrate] ✓ ${file}`);
+    console.log(`[migrate] ✓ ${file} (${statements.length} statements)`);
   }
 
   await ensureHardeningColumns();
