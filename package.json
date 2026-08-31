@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsup src/server.ts src/scripts/migrate.ts --format esm --clean",
+    "prestart": "npm run build",
     "start": "node dist/server.js",
     "migrate": "tsx src/scripts/migrate.ts",
     "migrate:prod": "node dist/migrate.js",
