@@ -13,13 +13,12 @@ This service is **product-agnostic**. Consumers (e.g. sitebase, other apps) pass
 ## Quick start (development)
 
 ```bash
-cp .env.example .env
-# Set DB_*, ADMIN_SECRET (>=32 chars), ENCRYPTION_KEY (64 hex chars)
-
-npm install
-npm run migrate
+# First run: creates .env, starts MySQL (docker), npm install, migrate
+./scripts/ensure-dev-ready.sh
 npm run dev
 ```
+
+Or copy `.env.example` yourself and set `DB_*`, `ADMIN_SECRET` (>=32 chars), `ENCRYPTION_KEY` (64 hex chars), then `npm install && npm run migrate && npm run dev`.
 
 Docker:
 
@@ -102,6 +101,8 @@ Without these env vars, sitebase returns `AI_HUB_NOT_CONFIGURED` (503).
 | `npm run dev` | Watch mode |
 | `npm run build` | Compile to `dist/` |
 | `npm start` | Run production build |
+| `./scripts/ensure-dev-ready.sh` | Create `.env` if missing, start Docker MySQL, migrate |
+| `./scripts/bootstrap-thaisnapai-integration.sh` | Dev ready + project `thaisnapai` + env snippet |
 | `npm run migrate` | Apply SQL migrations |
 | `npm test` | Unit tests |
 | `npm run typecheck` | TypeScript check |
