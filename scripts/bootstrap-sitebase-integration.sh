@@ -6,10 +6,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-if [[ ! -f .env ]]; then
-  echo "Missing .env — copy .env.example and set ADMIN_SECRET + ENCRYPTION_KEY first."
-  exit 1
-fi
+"${ROOT}/scripts/ensure-dev-ready.sh"
 
 set -a
 # shellcheck disable=SC1091
@@ -17,41 +14,8 @@ source .env
 set +a
 
 # Host API talks to published MySQL port
-export DB_HOST=localhost
-export DB_PORT=3307
-
-if [[ -z "${ADMIN_SECRET:-}" || ${#ADMIN_SECRET} -lt 32 ]]; then
-  echo "ADMIN_SECRET must be set (>=32 chars) in .env"
-  exit 1
-fi
-if [[ -z "${ENCRYPTION_KEY:-}" || ! "$ENCRYPTION_KEY" =~ ^[0-9a-fA-F]{64}$ ]]; then
-  echo "ENCRYPTION_KEY must be 64 hex chars in .env"
-  exit 1
-fi
-
-echo "==> Starting AiHub MySQL (host port 3307)..."
-docker compose up -d db
-
-echo "==> Waiting for MySQL..."
-for i in $(seq 1 60); do
-  if docker compose exec -T db mysqladmin ping -h localhost --silent 2>/dev/null; then
-    echo "    mysql is up"
-    break
-  fi
-  if [[ "$i" -eq 60 ]]; then
-    echo "MySQL did not become healthy. Check: docker compose logs db"
-    exit 1
-  fi
-  sleep 2
-done
-
-if [[ ! -d node_modules ]]; then
-  echo "==> npm install..."
-  npm install
-fi
-
-echo "==> Migrating..."
-npm run migrate
+export DB_HOST="${DB_HOST:-localhost}"
+export DB_PORT="${DB_PORT:-3307}"
 
 OUT_DIR="$ROOT/.local-integration"
 mkdir -p "$OUT_DIR"
