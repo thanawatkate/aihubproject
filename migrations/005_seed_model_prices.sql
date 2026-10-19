@@ -1,14 +1,14 @@
 -- =============================================================
 -- Realistic default prices for seeded models (USD per 1k tokens)
--- Source: list prices as known on 2026-10-19 (from memory, NOT re-checked against
--- vendor pages), converted from USD per 1M tokens.
--- Verify against the vendor pages and override via PUT /admin/model-pricing.
+-- Source: standard-tier list prices verified 2026-10-19 against ai.google.dev/gemini-api/docs/pricing
+-- and developers.openai.com/api/docs/pricing, converted from USD per 1M tokens.
+-- Prices change: re-check and override via PUT /admin/model-pricing.
 --   gpt-4.1-mini      in 0.40 / out 1.60 per 1M
 --   gpt-4o            in 2.50 / out 10.00 per 1M
 --   gemini-2.5-flash  in 0.30 / out 2.50 per 1M
 --   gemini-2.5-pro    in 1.25 / out 10.00 per 1M (prompts up to 200k tokens)
 -- Only active, non-deleted rows still at 0/0 are updated, so admin-edited prices are kept.
--- Note: migrate re-runs this file; a price an admin deliberately sets to 0/0 will be refilled.
+-- Note: migrate re-runs this file — a price an admin deliberately sets to 0/0 will be refilled.
 -- Wildcard rows (openai_compatible, custom) stay 0 because the real model is unknown.
 -- =============================================================
 

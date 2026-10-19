@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import type { RowDataPacket } from 'mysql2/promise';
 import { pool } from '../db/database.js';
+import { splitSqlStatements } from '../utils/splitSqlStatements.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.join(__dirname, '../../migrations');
@@ -56,23 +57,6 @@ async function ensureHardeningColumns(): Promise<void> {
     'reserved_cost',
     'DECIMAL(14,8) NOT NULL DEFAULT 0 AFTER `reserved_tokens`',
   );
-}
-
-function splitSqlStatements(sql: string): string[] {
-  return sql
-    .split(';')
-    .map((chunk) =>
-      chunk
-        .split('\n')
-        .map((line) => line.trimEnd())
-        .filter((line) => {
-          const trimmed = line.trim();
-          return trimmed !== '' && !trimmed.startsWith('--');
-        })
-        .join('\n')
-        .trim(),
-    )
-    .filter(Boolean);
 }
 
 async function migrate(): Promise<void> {
