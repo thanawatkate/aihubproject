@@ -21,6 +21,8 @@ export function estimateQuotaHold(
   kind: QuotaHoldKind,
   textChars: number,
   cfg: QuotaHoldConfig,
+  /** Caller-requested output cap; replaces the default output-token guess */
+  maxOutputTokens?: number,
 ): QuotaHoldEstimate {
   const safety = cfg.safetyMult;
 
@@ -32,11 +34,16 @@ export function estimateQuotaHold(
   }
 
   const inputTokens = Math.ceil(Math.max(0, textChars) / 2);
-  const rawTokens = Math.ceil((inputTokens + cfg.outputTokensDefault) * safety);
-  const tokens = clamp(rawTokens, 256, cfg.maxTokens);
+  const explicitOut = maxOutputTokens && maxOutputTokens > 0 ? maxOutputTokens : 0;
+  const rawTokens = Math.ceil((inputTokens + (explicitOut || cfg.outputTokensDefault)) * safety);
+  // Default guess is capped at maxTokens. An explicit caller output cap is never held below
+  // what was requested (otherwise large requests under-reserve and overshoot quota).
+  const tokenCap = explicitOut ? Math.max(cfg.maxTokens, rawTokens) : cfg.maxTokens;
+  const tokens = clamp(rawTokens, 256, tokenCap);
 
   const costFromTokens = (tokens / 1000) * cfg.usdPer1k * safety;
-  const cost = round8(clamp(costFromTokens, 0.001, cfg.maxCost * safety));
+  const costCap = cfg.maxCost * safety * (tokens > cfg.maxTokens && cfg.maxTokens > 0 ? tokens / cfg.maxTokens : 1);
+  const cost = round8(clamp(costFromTokens, 0.001, costCap));
 
   return { tokens, cost };
 }

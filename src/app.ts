@@ -30,6 +30,7 @@ import { imageRoutes } from './routes/v1/imageRoutes.js';
 import { providerRoutes } from './routes/admin/providerRoutes.js';
 import { projectRoutes } from './routes/admin/projectRoutes.js';
 import { billingRoutes } from './routes/admin/billingRoutes.js';
+import { usageRoutes } from './routes/v1/usageRoutes.js';
 import { auditRoutes } from './routes/admin/auditRoutes.js';
 import { startAuditRetentionJob } from './utils/auditRetentionJob.js';
 
@@ -89,7 +90,8 @@ export async function buildApp() {
   await fastify.register(imageRoutes, { projectRepo, imageService, quotaService, usageLogger, pricingService, concurrency });
   await fastify.register(providerRoutes, { settingsRepo, httpClient, auditService });
   await fastify.register(projectRoutes, { projectRepo, auditService });
-  await fastify.register(billingRoutes, { quotaService, pricingService, usageRepo, projectRepo, auditService });
+  await fastify.register(billingRoutes, { pricingService, usageRepo, auditService });
+  await fastify.register(usageRoutes, { quotaService, usageRepo, projectRepo });
   await fastify.register(auditRoutes, { auditService });
 
   const stopAuditJob = startAuditRetentionJob(auditService, fastify.log);

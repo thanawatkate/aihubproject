@@ -52,6 +52,7 @@ Create a project key via `POST /admin/projects` (admin). Save the raw key once.
 | Method | Path | Notes |
 |--------|------|-------|
 | POST | `/v1/text/assist` | Body: action, content, prompt, language, `usageKey` (default `text`), `feature` |
+| POST | `/v1/text/generate` | Product-agnostic. Body: `prompt` (1..60000), `system?` (max 8000), `language`, `usageKey` (default `text`), `feature` (default `text_generate`), `userId?`, `maxOutputTokens?` (int 1..16384). Over-limit = 400, never truncated. Same response shape as assist |
 | POST | `/v1/image/generate` | Body: prompt, size, `usageKey` (default `image`), optional targetWidth/Height, `feature` |
 | GET | `/v1/usage/summary` | Project usage |
 | GET | `/v1/usage/logs` | Project ledger |

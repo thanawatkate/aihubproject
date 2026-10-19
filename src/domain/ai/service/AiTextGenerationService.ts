@@ -1,4 +1,4 @@
-import type { AiTextProviderInterface } from '../provider/AiTextProviderInterface.js';
+import type { AiTextProviderInterface, GenerationOptions } from '../provider/AiTextProviderInterface.js';
 import type { AiProviderSettingsRepository } from '../repository/AiProviderSettingsRepository.js';
 import type { AiMessage, AiTextRequest, AiGenerationResult } from '../../../types/index.js';
 
@@ -33,8 +33,41 @@ export class AiTextGenerationService {
       throw new Error('Prompt or content is required');
     }
 
-    const messages  = this.buildMessages(action, language, prompt, selectedText, content);
-    const provider  = this.resolveProvider(settings.provider, settings.adapterType);
+    const messages = this.buildMessages(action, language, prompt, selectedText, content);
+    return this.run(settings, messages);
+  }
+
+  /** Product-agnostic generation: caller supplies the system prompt and raw prompt. No truncation here (route validates limits). */
+  async generate(payload: {
+    prompt: string;
+    system?: string;
+    usageKey?: string;
+    maxOutputTokens?: number;
+  }): Promise<AiGenerationResult & { provider: string; providerId: string; model: string }> {
+    const usageKey = (payload.usageKey ?? 'text').trim() || 'text';
+    const settings = await this.settingsRepo.resolveUsage(usageKey, 'text');
+    if (!settings) throw new Error('AI text provider is not configured');
+    if (!settings.apiKey && settings.authConfig.type !== 'none') {
+      throw new Error('AI text provider API key is not configured');
+    }
+
+    const prompt = payload.prompt ?? '';
+    if (!prompt.trim()) throw new Error('Prompt is required');
+
+    const messages: AiMessage[] = [];
+    const system = (payload.system ?? '').trim();
+    if (system) messages.push({ role: 'system', content: system });
+    messages.push({ role: 'user', content: prompt });
+
+    return this.run(settings, messages, { maxOutputTokens: payload.maxOutputTokens });
+  }
+
+  private async run(
+    settings: NonNullable<Awaited<ReturnType<AiProviderSettingsRepository['resolveUsage']>>>,
+    messages: AiMessage[],
+    options?: GenerationOptions,
+  ): Promise<AiGenerationResult & { provider: string; providerId: string; model: string }> {
+    const provider = this.resolveProvider(settings.provider, settings.adapterType);
     if (!provider) throw new Error(`No provider adapter for "${settings.provider}" / "${settings.adapterType}"`);
 
     const result = await provider.generate(
@@ -44,8 +77,10 @@ export class AiTextGenerationService {
         model:      settings.model,
         adapterType: settings.adapterType,
         authConfig: settings.authConfig,
+        provider:   settings.provider,
       },
       messages,
+      options,
     );
 
     return {

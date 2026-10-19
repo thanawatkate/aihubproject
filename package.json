@@ -12,7 +12,7 @@
     "migrate": "tsx src/scripts/migrate.ts",
     "migrate:prod": "node dist/migrate.js",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test src/**/*.test.ts"
+    "test": "node scripts/run-tests.mjs"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

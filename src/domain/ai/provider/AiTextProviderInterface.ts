@@ -2,7 +2,12 @@ import type { AiMessage } from '../../../types/index.js';
 
 export interface AiTextProviderInterface {
   supports(provider: string, adapterType: string): boolean;
-  generate(settings: ResolvedSettings, messages: AiMessage[]): Promise<GenerationResult>;
+  generate(settings: ResolvedSettings, messages: AiMessage[], options?: GenerationOptions): Promise<GenerationResult>;
+}
+
+export interface GenerationOptions {
+  /** Upper bound on generated tokens; omitted = provider default */
+  maxOutputTokens?: number;
 }
 
 export interface ResolvedSettings {

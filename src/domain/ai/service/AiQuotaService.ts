@@ -22,6 +22,8 @@ export interface QuotaReservationHandle {
 export interface ReserveRequestOptions {
   kind?: QuotaHoldKind;
   textChars?: number;
+  /** Caller-requested output cap (scales the token hold) */
+  maxOutputTokens?: number;
   /** Explicit overrides (tests / callers with better estimates) */
   reserveTokens?: number;
   reserveCost?: number;
@@ -81,7 +83,7 @@ export class AiQuotaService {
       maxCost: env.QUOTA_RESERVE_COST_PER_REQUEST,
       outputTokensDefault: env.QUOTA_RESERVE_OUTPUT_TOKENS_DEFAULT,
       usdPer1k: env.QUOTA_RESERVE_USD_PER_1K_TOKENS,
-    });
+    }, options.maxOutputTokens);
     const reserveTokens = tokenLimit === null
       ? 0
       : (options.reserveTokens ?? hold.tokens);

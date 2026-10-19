@@ -1,4 +1,4 @@
-import type { AiTextProviderInterface, ResolvedSettings, GenerationResult } from './AiTextProviderInterface.js';
+import type { AiTextProviderInterface, ResolvedSettings, GenerationResult, GenerationOptions } from './AiTextProviderInterface.js';
 import { AiProviderHttpClient } from './AiProviderHttpClient.js';
 import { AiProviderResponseHelper } from './AiProviderResponseHelper.js';
 import type { AiMessage } from '../../../types/index.js';
@@ -15,7 +15,7 @@ export class HttpJsonTextProvider implements AiTextProviderInterface {
     return adapterType === 'http_json' || provider === 'custom';
   }
 
-  async generate(settings: ResolvedSettings, messages: AiMessage[]): Promise<GenerationResult> {
+  async generate(settings: ResolvedSettings, messages: AiMessage[], options?: GenerationOptions): Promise<GenerationResult> {
     const baseUrl = settings.baseUrl.replace(/\/$/, '');
     const { headers, queryParam } = this.client.buildAuthHeaders(
       { apiKey: settings.apiKey, authConfig: settings.authConfig as ResolvedSettings['authConfig'] },
@@ -23,11 +23,12 @@ export class HttpJsonTextProvider implements AiTextProviderInterface {
     );
 
     const url = `${baseUrl}/chat/completions${queryParam ? `?${queryParam}` : ''}`;
-    const body = {
+    const body: Record<string, unknown> = {
       model:       settings.model,
       messages:    messages.map(m => ({ role: m.role, content: m.content })),
       temperature: 0.4,
     };
+    if (options?.maxOutputTokens) body['max_tokens'] = options.maxOutputTokens;
 
     const data = await this.client.requestJson({
       method:    'POST',
